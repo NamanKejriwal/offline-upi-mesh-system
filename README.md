@@ -397,12 +397,6 @@ This is a functional prototype. To make it production-grade you'd swap these thi
 
 ---
 
-## Interview Talking Points
-
-- **Concurrency Control:** How the system uses `ConcurrentHashMap.putIfAbsent()` and `@Version` Optimistic Locking to gracefully handle multiple bridge node threads pushing duplicate JSON payloads concurrently without data corruption or double spending.
-- **Cryptography Implementation:** Using AES-GCM combined with RSA-OAEP to bypass RSA length constraints while ensuring payload size efficiency and strong AEAD integrity checks.
-- **Resilience Engineering:** Integrating a Dead Letter Queue (DLQ) pipeline to collect packet tampering attempts and provide auditing capability, separating "infrastructure errors" from "security anomalies".
-- **Observability:** Building an internal API and dashboard to aggregate `AtomicInteger` KPI metrics.
 
 ---
 
