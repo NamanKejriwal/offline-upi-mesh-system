@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * In-memory idempotency cache. In production this would be Redis with SETNX +
@@ -25,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class IdempotencyService {
 
     private final Map<String, Instant> seen = new ConcurrentHashMap<>();
+    private final AtomicInteger duplicateRequests = new AtomicInteger(0);
 
     @Value("${upi.mesh.idempotency-ttl-seconds:86400}")
     private long ttlSeconds;
@@ -36,7 +38,15 @@ public class IdempotencyService {
     public boolean claim(String packetHash) {
         Instant now = Instant.now();
         Instant prev = seen.putIfAbsent(packetHash, now);
-        return prev == null;
+        if (prev != null) {
+            duplicateRequests.incrementAndGet();
+            return false;
+        }
+        return true;
+    }
+
+    public int getDuplicateCount() {
+        return duplicateRequests.get();
     }
 
     public int size() {
