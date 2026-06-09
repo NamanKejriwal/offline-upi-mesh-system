@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * In-memory Token Bucket rate limiter.
@@ -19,6 +20,7 @@ public class RateLimiter {
     private static final Logger log = LoggerFactory.getLogger(RateLimiter.class);
 
     private final Map<String, Bucket> clientBuckets = new ConcurrentHashMap<>();
+    private final AtomicInteger blockedRequests = new AtomicInteger(0);
 
     // Configuration
     private static final int MAX_TOKENS = 10;
@@ -26,7 +28,19 @@ public class RateLimiter {
 
     public boolean allowRequest(String clientIp) {
         Bucket bucket = clientBuckets.computeIfAbsent(clientIp, k -> new Bucket());
-        return bucket.tryConsume();
+        boolean allowed = bucket.tryConsume();
+        if (!allowed) {
+            blockedRequests.incrementAndGet();
+        }
+        return allowed;
+    }
+
+    public int getBlockedCount() {
+        return blockedRequests.get();
+    }
+
+    public int getActiveBucketCount() {
+        return clientBuckets.size();
     }
 
     /**

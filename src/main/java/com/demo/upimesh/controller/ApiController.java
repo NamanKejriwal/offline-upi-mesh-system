@@ -30,6 +30,9 @@ public class ApiController {
     @Autowired private AccountRepository accountRepo;
     @Autowired private TransactionRepository txRepo;
     @Autowired private IdempotencyService idempotency;
+    @Autowired private RateLimiter rateLimiter;
+    @Autowired private FailedPacketRepository failedRepo;
+    @Autowired private HealthService healthService;
 
     // ------------------------------------------------------------------ key
 
@@ -174,5 +177,41 @@ public class ApiController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return txRepo.findAllByOrderByIdDesc(org.springframework.data.domain.PageRequest.of(page, size));
+    }
+
+    // ------------------------------------------------------------- dashboard
+
+    @GetMapping("/dashboard/overview")
+    public Map<String, Object> getDashboardOverview() {
+        HealthStatus health = healthService.checkHealth();
+
+        BigDecimal totalVolume = txRepo.getTotalVolume();
+        long totalSettled = txRepo.count();
+
+        Map<String, Object> kpis = Map.of(
+                "totalSettled", totalSettled,
+                "totalVolume", totalVolume,
+                "duplicatesPrevented", idempotency.getDuplicateCount(),
+                "rateLimitsBlocked", rateLimiter.getBlockedCount(),
+                "totalFailedPackets", failedRepo.count()
+        );
+
+        List<Map<String, Object>> devices = mesh.getDevices().stream()
+                .map(d -> Map.<String, Object>of(
+                        "id", d.getDeviceId(),
+                        "isOnline", d.hasInternet(),
+                        "packetCount", d.packetCount()
+                )).toList();
+
+        return Map.of(
+                "health", health,
+                "kpis", kpis,
+                "devices", devices
+        );
+    }
+
+    @GetMapping("/failed-packets")
+    public List<FailedPacket> getFailedPackets() {
+        return failedRepo.findTop10ByOrderByIdDesc();
     }
 }
