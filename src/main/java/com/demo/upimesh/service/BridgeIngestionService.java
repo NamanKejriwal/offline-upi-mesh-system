@@ -1,6 +1,8 @@
 package com.demo.upimesh.service;
 
 import com.demo.upimesh.crypto.HybridCryptoService;
+import com.demo.upimesh.model.FailedPacket;
+import com.demo.upimesh.model.FailedPacketRepository;
 import com.demo.upimesh.model.MeshPacket;
 import com.demo.upimesh.model.PaymentInstruction;
 import com.demo.upimesh.model.Transaction;
@@ -32,6 +34,7 @@ public class BridgeIngestionService {
     @Autowired private HybridCryptoService crypto;
     @Autowired private IdempotencyService idempotency;
     @Autowired private SettlementService settlement;
+    @Autowired private FailedPacketRepository failedPackets;
 
     @Value("${upi.mesh.packet-max-age-seconds:86400}")
     private long maxAgeSeconds;
@@ -54,6 +57,7 @@ public class BridgeIngestionService {
             } catch (Exception e) {
                 log.warn("Decryption failed for packet {}: {}",
                         packetHash.substring(0, 12) + "...", e.getMessage());
+                saveFailedPacket(packet, packetHash, bridgeNodeId, hopCount, "decryption_failed", e.getMessage());
                 return IngestResult.invalid(packetHash, "decryption_failed");
             }
 
@@ -62,9 +66,11 @@ public class BridgeIngestionService {
             if (ageSeconds > maxAgeSeconds) {
                 log.warn("Packet {} too old ({}s), rejected",
                         packetHash.substring(0, 12) + "...", ageSeconds);
+                saveFailedPacket(packet, packetHash, bridgeNodeId, hopCount, "stale_packet", "Age: " + ageSeconds + "s");
                 return IngestResult.invalid(packetHash, "stale_packet");
             }
             if (ageSeconds < -300) { // small clock-skew tolerance
+                saveFailedPacket(packet, packetHash, bridgeNodeId, hopCount, "future_dated", "Age: " + ageSeconds + "s");
                 return IngestResult.invalid(packetHash, "future_dated");
             }
 
@@ -74,8 +80,21 @@ public class BridgeIngestionService {
 
         } catch (Exception e) {
             log.error("Ingestion error: {}", e.getMessage(), e);
+            saveFailedPacket(packet, "UNKNOWN", bridgeNodeId, hopCount, "internal_error", e.getMessage());
             return IngestResult.invalid("?", "internal_error: " + e.getMessage());
         }
+    }
+
+    private void saveFailedPacket(MeshPacket packet, String hash, String bridgeNodeId, int hopCount, String reason, String errorDetails) {
+        FailedPacket fp = new FailedPacket();
+        fp.setPacketHash(hash);
+        fp.setBridgeNodeId(bridgeNodeId);
+        fp.setCiphertext(packet.getCiphertext());
+        fp.setReason(reason);
+        fp.setErrorDetails(errorDetails);
+        fp.setHopCount(hopCount);
+        fp.setReceivedAt(Instant.now());
+        failedPackets.save(fp);
     }
 
     public record IngestResult(String outcome, String packetHash, String reason, Long transactionId) {
