@@ -170,7 +170,9 @@ public class ApiController {
     }
 
     @GetMapping("/transactions")
-    public List<Transaction> listTransactions() {
-        return txRepo.findTop20ByOrderByIdDesc();
+    public org.springframework.data.domain.Page<Transaction> listTransactions(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return txRepo.findAllByOrderByIdDesc(org.springframework.data.domain.PageRequest.of(page, size));
     }
 }
